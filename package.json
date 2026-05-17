@@ -1,0 +1,33 @@
+{
+  "name": "clario",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Clario — track and split expenses with AI. Your receipts stay in your own cloud.",
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "scripts": {
+    "dev": "npm run dev --workspace=apps/web",
+    "build": "npm run build --workspace=apps/web",
+    "deploy": "node scripts/deploy.mjs",
+    "db:migrate": "supabase db push --workspace=packages/db",
+    "db:seed": "supabase db seed --workspace=packages/db",
+    "db:types": "supabase gen types typescript --local > packages/shared/src/database.types.ts",
+    "lint": "biome lint ./apps ./packages",
+    "format": "biome format --write ./apps ./packages",
+    "typecheck": "tsc --build",
+    "refactor:check": "knip",
+    "quality": "npm run lint && npm run typecheck && npm run refactor:check",
+    "prepare": "husky"
+  },
+  "devDependencies": {
+    "@biomejs/biome": "^1.8.0",
+    "husky": "^9.0.0",
+    "knip": "^5.0.0",
+    "typescript": "^5.4.0"
+  },
+  "engines": {
+    "node": ">=20.0.0"
+  }
+}
