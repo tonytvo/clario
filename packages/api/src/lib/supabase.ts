@@ -10,16 +10,19 @@
 
 import { createClient } from "@supabase/supabase-js";
 
-const SUPABASE_URL = process.env.SUPABASE_URL;
-const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;
+const rawUrl = process.env.SUPABASE_URL;
+const rawKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
 
-if (!SUPABASE_URL || !SUPABASE_SERVICE_ROLE_KEY) {
+if (!rawUrl || !rawKey) {
   throw new Error(
     "Missing SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY environment variables."
   );
 }
 
-// Service client — bypasses RLS (used only for admin ops)
+const SUPABASE_URL: string = rawUrl;
+const SUPABASE_SERVICE_ROLE_KEY: string = rawKey;
+
+// Service client — bypasses RLS (used for admin ops and local MCP mode)
 export function createServiceClient() {
   return createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, {
     auth: { persistSession: false },

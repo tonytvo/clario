@@ -17,6 +17,7 @@ import { Hono } from "hono";
 import { cors } from "hono/cors";
 import { HTTPException } from "hono/http-exception";
 import { ZodError } from "zod";
+import { zodToJsonSchema } from "zod-to-json-schema";
 import { TOOL_REGISTRY } from "../tools/schemas.ts";
 import {
   getExpenses,
@@ -28,6 +29,13 @@ import {
 } from "../tools/handlers.ts";
 import { createUserClient, getUserIdFromJwt } from "../lib/supabase.ts";
 
+type Env = {
+  Variables: {
+    jwt: string;
+    userId: string;
+  };
+};
+
 const HANDLERS: Record<string, Function> = {
   get_expenses: getExpenses,
   add_expense: addExpense,
@@ -38,7 +46,7 @@ const HANDLERS: Record<string, Function> = {
 };
 
 export function createOpenApiRouter() {
-  const app = new Hono();
+  const app = new Hono<Env>();
 
   // ── CORS (allow ChatGPT to call us) ────────────────────────
   app.use(
@@ -190,9 +198,6 @@ function generateOpenApiSpec() {
   };
 }
 
-// Minimal Zod → OpenAPI schema converter for primitive types
-// For full support you'd use zod-to-json-schema, but this handles our cases fine
 function zodSchemaToOpenApi(schema: any): any {
-  const { zodToJsonSchema } = require("zod-to-json-schema");
   return zodToJsonSchema(schema, { $refStrategy: "none" });
 }

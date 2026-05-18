@@ -1,20 +1,15 @@
 /**
  * MCP adapter — exposes all tool handlers as MCP tools.
  *
- * When transport = stdio:  Claude Desktop connects directly (local)
- * When transport = http:   Claude connects via HTTP (remote MCP server)
- *
- * The adapter:
- *   1. Reads user identity from the MCP session (set during OAuth or API key exchange)
- *   2. Creates a Supabase client scoped to that user
- *   3. Calls the shared handler
- *   4. Returns the result as MCP tool content
+ * When transport = stdio:  Claude Desktop connects directly (local).
+ *   Auth: reads CLARIO_USER_ID from env + uses service role key.
+ * When transport = http:   Claude connects via HTTP (remote MCP server).
+ *   Auth: expects a Supabase JWT in the MCP session metadata.
  */
 
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
-import { zodToJsonSchema } from "zod-to-json-schema";
-import { TOOL_REGISTRY } from "../tools/schemas.ts";
+import { TOOL_REGISTRY, UploadReceiptFromPathInput } from "../tools/schemas.ts";
 import {
   getExpenses,
   addExpense,
@@ -22,10 +17,10 @@ import {
   settleUp,
   getGroups,
   attachReceipt,
+  uploadReceiptFromPath,
 } from "../tools/handlers.ts";
-import { createUserClient, getUserIdFromJwt } from "../lib/supabase.ts";
+import { createUserClient, createServiceClient, getUserIdFromJwt } from "../lib/supabase.ts";
 
-// Map tool name → handler function
 const HANDLERS: Record<string, Function> = {
   get_expenses: getExpenses,
   add_expense: addExpense,
@@ -41,60 +36,93 @@ export function createMcpServer() {
     version: "0.1.0",
   });
 
-  // Register every tool from the shared registry
+  // Register every shared tool from the registry
   for (const tool of TOOL_REGISTRY) {
     server.tool(
       tool.name,
       tool.description,
-      // MCP SDK accepts JSON Schema for tool inputs
-      zodToJsonSchema(tool.inputSchema, { $refStrategy: "none" }) as any,
-      async (args: Record<string, unknown>, extra: { meta?: { jwt?: string } }) => {
-        // Validate input with Zod
+      tool.inputSchema.shape,
+      (async (args: Record<string, unknown>, extra: any) => {
+        const { userId, supabase, error } = resolveAuth(extra?.meta?.jwt);
+        if (error) {
+          return { content: [{ type: "text", text: error }], isError: true };
+        }
+
         const input = tool.inputSchema.parse(args);
 
-        // Get user identity from session metadata
-        // In MCP-over-HTTP, the JWT is passed in the session
-        const jwt = extra?.meta?.jwt;
-        if (!jwt) {
-          return {
-            content: [{ type: "text", text: "Error: Not authenticated. Please sign in first." }],
-            isError: true,
-          };
-        }
-
-        const userId = getUserIdFromJwt(jwt);
-        const supabase = createUserClient(jwt);
-
         try {
-          const handler = HANDLERS[tool.name];
-          const result = await handler(input, supabase, userId);
-
-          return {
-            content: [
-              {
-                type: "text",
-                text: JSON.stringify(result, null, 2),
-              },
-            ],
-          };
+          // supabase is guaranteed non-null here since error check above returned early
+          const result = await HANDLERS[tool.name](input, supabase!, userId!);
+          return { content: [{ type: "text", text: JSON.stringify(result, null, 2) }] };
         } catch (err) {
           const message = err instanceof Error ? err.message : "Unknown error";
-          return {
-            content: [{ type: "text", text: `Error: ${message}` }],
-            isError: true,
-          };
+          return { content: [{ type: "text", text: `Error: ${message}` }], isError: true };
         }
-      }
+      }) as any
     );
   }
+
+  // upload_receipt_from_path — MCP-only (local file system access required)
+  server.tool(
+    "upload_receipt_from_path",
+    "Upload a receipt from a local file path and attach it to an expense. Reads the file from your machine, uploads it to Supabase Storage, and stores the URL. Supports JPEG, PNG, PDF, WebP.",
+    UploadReceiptFromPathInput.shape,
+    (async (args: Record<string, unknown>, extra: any) => {
+      const { userId, supabase, error } = resolveAuth(extra?.meta?.jwt);
+      if (error) {
+        return { content: [{ type: "text", text: error }], isError: true };
+      }
+
+      const input = UploadReceiptFromPathInput.parse(args);
+
+      try {
+        const result = await uploadReceiptFromPath(input, supabase!, userId!);
+        return { content: [{ type: "text", text: JSON.stringify(result, null, 2) }] };
+      } catch (err) {
+        const message = err instanceof Error ? err.message : "Unknown error";
+        return { content: [{ type: "text", text: `Error: ${message}` }], isError: true };
+      }
+    }) as any
+  );
 
   return server;
 }
 
-// Start the MCP server over stdio (for Claude Desktop local connection)
+/**
+ * Resolve authentication for a tool call.
+ *
+ * Priority:
+ *   1. JWT in session metadata  (MCP-over-HTTP, remote connections)
+ *   2. CLARIO_USER_ID env var   (stdio / Claude Desktop, local use)
+ */
+function resolveAuth(jwt: string | undefined) {
+  if (jwt) {
+    return {
+      userId: getUserIdFromJwt(jwt),
+      supabase: createUserClient(jwt),
+      error: null,
+    };
+  }
+
+  const envUserId = process.env.CLARIO_USER_ID;
+  if (envUserId) {
+    return {
+      userId: envUserId,
+      supabase: createServiceClient(),
+      error: null,
+    };
+  }
+
+  return {
+    userId: null,
+    supabase: null,
+    error: "Error: Not authenticated. Set CLARIO_USER_ID in your .env or sign in first.",
+  };
+}
+
 export async function startStdioMcpServer() {
   const server = createMcpServer();
   const transport = new StdioServerTransport();
   await server.connect(transport);
-  console.error("Clario MCP server running on stdio"); // stderr so it doesn't pollute MCP protocol
+  console.error("Clario MCP server running on stdio");
 }

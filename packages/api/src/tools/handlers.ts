@@ -9,6 +9,8 @@
  * scoped to the authenticated user.
  */
 
+import { readFile } from "node:fs/promises";
+import { basename, extname } from "node:path";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { z } from "zod";
 import type {
@@ -24,7 +26,18 @@ import type {
   GetGroupsOutput,
   AttachReceiptInput,
   AttachReceiptOutput,
+  UploadReceiptFromPathInput,
+  UploadReceiptFromPathOutput,
 } from "./schemas.ts";
+
+const MIME_TYPES: Record<string, string> = {
+  ".jpg": "image/jpeg",
+  ".jpeg": "image/jpeg",
+  ".png": "image/png",
+  ".pdf": "application/pdf",
+  ".webp": "image/webp",
+  ".heic": "image/heic",
+};
 
 type In<T extends z.ZodType> = z.infer<T>;
 type Out<T extends z.ZodType> = z.infer<T>;
@@ -243,20 +256,24 @@ export async function settleUp(
   supabase: SupabaseClient,
   userId: string
 ): Promise<Out<typeof SettleUpOutput>> {
+  // Fetch expense IDs paid by the other user in this group
+  const { data: relatedExpenses } = await supabase
+    .from("expenses")
+    .select("id")
+    .eq("paid_by", input.to_user_id)
+    .eq("group_id", input.group_id);
+
+  const expenseIds = (relatedExpenses ?? []).map((e: any) => e.id);
+
   // Mark relevant splits as settled
-  const { error: splitErr } = await supabase
-    .from("expense_splits")
-    .update({ settled: true, settled_at: new Date().toISOString() })
-    .eq("user_id", userId)
-    .eq("settled", false)
-    .in(
-      "expense_id",
-      supabase
-        .from("expenses")
-        .select("id")
-        .eq("paid_by", input.to_user_id)
-        .eq("group_id", input.group_id)
-    );
+  const { error: splitErr } = expenseIds.length === 0
+    ? { error: null }
+    : await supabase
+        .from("expense_splits")
+        .update({ settled: true, settled_at: new Date().toISOString() })
+        .eq("user_id", userId)
+        .eq("settled", false)
+        .in("expense_id", expenseIds);
 
   if (splitErr) throw new Error(`Failed to settle splits: ${splitErr.message}`);
 
@@ -368,5 +385,58 @@ export async function attachReceipt(
     receipt_id: data.id,
     embed_url: embedUrl,
     message: `Receipt attached successfully. Preview: ${embedUrl}`,
+  };
+}
+
+// ── upload_receipt_from_path (MCP / Claude Desktop only) ─────────────────────
+
+export async function uploadReceiptFromPath(
+  input: In<typeof UploadReceiptFromPathInput>,
+  supabase: SupabaseClient,
+  userId: string
+): Promise<Out<typeof UploadReceiptFromPathOutput>> {
+  const filename = basename(input.file_path);
+  const ext = extname(input.file_path).toLowerCase();
+  const mimeType = MIME_TYPES[ext] ?? "application/octet-stream";
+
+  let buffer: Buffer;
+  try {
+    buffer = await readFile(input.file_path);
+  } catch (err) {
+    throw new Error(
+      `Cannot read file "${input.file_path}": ${err instanceof Error ? err.message : String(err)}`
+    );
+  }
+
+  const bucket = process.env.SUPABASE_STORAGE_BUCKET ?? "receipts";
+  const storagePath = `${userId}/${input.expense_id}/${Date.now()}_${filename}`;
+
+  const { error: uploadError } = await supabase.storage
+    .from(bucket)
+    .upload(storagePath, buffer, { contentType: mimeType, upsert: false });
+
+  if (uploadError) throw new Error(`Storage upload failed: ${uploadError.message}`);
+
+  const { data: { publicUrl } } = supabase.storage.from(bucket).getPublicUrl(storagePath);
+
+  const { data, error: dbError } = await supabase
+    .from("receipt_links")
+    .insert({
+      expense_id: input.expense_id,
+      uploaded_by: userId,
+      url: publicUrl,
+      embed_url: publicUrl,
+      provider: "url",
+      filename,
+    })
+    .select("id")
+    .single();
+
+  if (dbError) throw new Error(`Failed to save receipt link: ${dbError.message}`);
+
+  return {
+    receipt_id: data.id,
+    url: publicUrl,
+    message: `Receipt "${filename}" uploaded and attached. View it at: ${publicUrl}`,
   };
 }

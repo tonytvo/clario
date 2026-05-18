@@ -171,6 +171,24 @@ export const AttachReceiptOutput = z.object({
   message: z.string(),
 });
 
+// ── upload_receipt_from_path ──────────────────────────────────────────────────
+// MCP-only (not in TOOL_REGISTRY — only registered in the MCP adapter).
+// Claude Desktop reads the file from disk and uploads it to Supabase Storage,
+// then stores only the resulting URL in the DB.
+
+export const UploadReceiptFromPathInput = z.object({
+  expense_id: UUID,
+  file_path: z.string().describe(
+    "Absolute path to the receipt file on the local machine. Supports JPEG, PNG, PDF, WebP."
+  ),
+});
+
+export const UploadReceiptFromPathOutput = z.object({
+  receipt_id: UUID,
+  url: z.string().url().describe("Public URL of the uploaded receipt in Supabase Storage."),
+  message: z.string(),
+});
+
 // ── Tool registry ─────────────────────────────────────────────────────────
 // Single place to enumerate all tools. Both adapters iterate this.
 
