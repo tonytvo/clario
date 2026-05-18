@@ -397,7 +397,12 @@ export async function uploadReceiptFromPath(
 ): Promise<Out<typeof UploadReceiptFromPathOutput>> {
   const filename = basename(input.file_path);
   const ext = extname(input.file_path).toLowerCase();
-  const mimeType = MIME_TYPES[ext] ?? "application/octet-stream";
+  const mimeType = MIME_TYPES[ext];
+  if (!mimeType) {
+    throw new Error(
+      `Unsupported file type "${ext}". Allowed: ${Object.keys(MIME_TYPES).join(", ")}`
+    );
+  }
 
   let buffer: Buffer;
   try {

@@ -3,12 +3,12 @@
 -- Run after 001_initial_schema.sql
 -- ============================================================
 
--- Create the receipts bucket (public = files are readable without auth token)
+-- Create the receipts bucket (private — RLS controls all access)
 insert into storage.buckets (id, name, public, file_size_limit, allowed_mime_types)
 values (
   'receipts',
   'receipts',
-  true,
+  false,
   10485760,   -- 10 MB per file
   array['image/jpeg', 'image/png', 'image/webp', 'image/heic', 'application/pdf']
 )
@@ -24,10 +24,21 @@ create policy "receipts: owner can upload"
     and auth.uid()::text = (string_to_array(name, '/'))[1]
   );
 
--- Anyone can read (receipts are shared among group members; public bucket)
-create policy "receipts: public read"
+-- Only authenticated group members can read receipts for expenses in their groups.
+-- Path format: {userId}/{expenseId}/{timestamp}_{filename}
+-- We extract the expenseId (segment 2) and verify the requester is a group member.
+create policy "receipts: group members can read"
   on storage.objects for select
-  using (bucket_id = 'receipts');
+  using (
+    bucket_id = 'receipts'
+    and auth.uid() is not null
+    and (string_to_array(name, '/'))[2] ~ '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$'
+    and exists (
+      select 1 from public.expenses e
+      where e.id::text = (string_to_array(name, '/'))[2]
+        and public.is_group_member(e.group_id)
+    )
+  );
 
 -- Uploader can delete their own files
 create policy "receipts: owner can delete"
