@@ -11,7 +11,7 @@
 
 ## What is this?
 
-Clario is a Splitwise-style expense tracker where **you own your data**. Receipts are stored in your own Google Drive — not on our servers. The app only stores a link.
+Clario is a Splitwise-style expense tracker where **you own your data**. Receipts are stored in your own Google Drive — not on our servers.
 
 - No subscription. No ads. No receipt storage fees.
 - One-command install for non-technical users (Windows, Mac, Linux)
