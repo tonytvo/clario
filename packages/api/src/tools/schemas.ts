@@ -11,11 +11,11 @@ import { z } from "zod";
 
 // ── Primitive reusables ────────────────────────────────────────────────────
 
-export const UUID = z.string().uuid();
+const UUID = z.string().uuid();
 
-export const Currency = z.string().length(3).default("CAD");
+const Currency = z.string().length(3).default("CAD");
 
-export const Category = z.enum([
+const Category = z.enum([
   "Groceries",
   "Dining",
   "Utilities",
@@ -27,7 +27,7 @@ export const Category = z.enum([
   "Other",
 ]);
 
-export const SortOrder = z.enum(["asc", "desc"]).default("desc");
+const SortOrder = z.enum(["asc", "desc"]).default("desc");
 
 // ── get_expenses ──────────────────────────────────────────────────────────
 
@@ -50,7 +50,7 @@ export const GetExpensesInput = z.object({
   limit: z.number().int().min(1).max(100).default(50),
 });
 
-export const ExpenseRow = z.object({
+const ExpenseRow = z.object({
   id: UUID,
   title: z.string(),
   amount: z.number(),
@@ -110,7 +110,7 @@ export const GetBalancesInput = z.object({
   ),
 });
 
-export const BalanceEntry = z.object({
+const BalanceEntry = z.object({
   user_id: UUID,
   user_name: z.string(),
   net: z.number().describe("Positive = they owe you. Negative = you owe them."),
@@ -142,7 +142,7 @@ export const SettleUpOutput = z.object({
 
 export const GetGroupsInput = z.object({}).describe("No parameters — returns all groups.");
 
-export const GroupRow = z.object({
+const GroupRow = z.object({
   id: UUID,
   name: z.string(),
   member_count: z.number().int(),
@@ -237,4 +237,4 @@ export const TOOL_REGISTRY = [
   },
 ] as const;
 
-export type ToolName = typeof TOOL_REGISTRY[number]["name"];
+type ToolName = typeof TOOL_REGISTRY[number]["name"];

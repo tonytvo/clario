@@ -30,7 +30,7 @@ const HANDLERS: Record<string, Function> = {
   attach_receipt: attachReceipt,
 };
 
-export function createMcpServer() {
+function createMcpServer() {
   const server = new McpServer({
     name: "clario",
     version: "0.1.0",
