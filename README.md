@@ -1,18 +1,19 @@
 # Clario 🧾
 
-> Split expenses with friends. Your receipts stay yours — stored in your own Google Drive or Dropbox. Free forever, open source, built by AI.
+> Split expenses with friends. Your receipts stay yours. Free forever, open source, built by AI.
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
 [![Built with AI](https://img.shields.io/badge/Built%20with-Claude%20AI-blueviolet)](https://claude.ai)
-[![Deploy on Vercel](https://img.shields.io/badge/Deploy-Vercel-black)](https://vercel.com)
-[![Supabase](https://img.shields.io/badge/Backend-Supabase-3ECF8E)](https://supabase.com)
+![Local-first](https://img.shields.io/badge/Local--first-offline%20ready-2ea44f)
+![Sync](https://img.shields.io/badge/Sync-CRDT%20(engine%20TBD)-orange)
 
 ---
 
 ## What is this?
 
-Clario is a Splitwise-style expense tracker where **you own your data**. Receipts are stored in your own Google Drive — not on our servers.
+Clario is a Splitwise-style expense tracker where **you own your data**. Your receipts stay yours — never locked into our servers.
 
+- **Local-first** — your data lives on your device and works fully offline.
 - No subscription. No ads. No receipt storage fees.
 - One-command install for non-technical users (Windows, Mac, Linux)
 - One-command deploy for self-hosters
@@ -29,38 +30,39 @@ Clario is a Splitwise-style expense tracker where **you own your data**. Receipt
 npx clario
 ```
 
-That's it. Opens the app in your browser, walks you through connecting your Google account.
+That's it. Opens the app in your browser. Your data stays on your device — no account required to start.
 
 ### For developers
 
 ```bash
 git clone https://github.com/YOUR_USERNAME/clario
 cd clario
-cp .env.example .env        # fill in your Supabase keys
 npm install
-npm run dev
+npm run dev                 # runs locally, data stored on-device
 ```
 
 ### Deploy your own instance (free)
+
+Clario is local-first — it runs on your device with **no backend required**. To share a group and sync across devices, you can optionally host a lightweight sync service:
 
 ```bash
 npm run deploy
 ```
 
-Deploys to Vercel (frontend) + Supabase (backend) — both have generous free tiers. Runs indefinitely at $0/month for small groups.
+The sync layer is deliberately swappable (CRDT engine TBD), and the whole thing runs at **$0/month** for small groups.
 
 ---
 
 ## How receipts work
 
-Your receipts never touch our server. When you attach a receipt:
+Receipts are yours. When you attach a receipt to an expense:
 
 1. You pick a file from your device
-2. The app uploads it directly to **your** Google Drive (using your OAuth token)
-3. Only the Drive link is saved in the database
-4. Group members click the link — Google serves the file directly
+2. It's attached to the expense so your group can see the proof of purchase
+3. You keep ownership and control of the file — it's never locked into our servers
+4. You can revoke access or remove it anytime
 
-Your data stays in your Google account. Revoke access anytime.
+> The underlying storage mechanism is intentionally flexible and not yet fixed — the guarantee is that your receipts stay yours.
 
 ---
 
@@ -69,8 +71,8 @@ Your data stays in your Google account. Revoke access anytime.
 | Layer | Tool | Why |
 |---|---|---|
 | Frontend | Next.js 14 + React | App Router, server components |
-| Backend | Supabase (Postgres + Auth + Realtime) | Free tier, open source |
-| Receipt storage | Google Drive API | User owns their data |
+| Data & sync | Local-first store + CRDT sync (engine TBD) | Works offline, you own your data |
+| Receipt storage | User-owned (mechanism TBD) | User owns their data |
 | Styling | Tailwind CSS + shadcn/ui | Fast, accessible |
 | Desktop wrapper | Electron (optional) | One-click install for non-devs |
 | Refactoring | Knip + ESLint + Biome | AI-assisted quality |
@@ -90,12 +92,11 @@ Every feature starts as a prompt template in `docs/spdd/commands/`. AI does the 
 
 See [docs/self-hosting.md](docs/self-hosting.md) for full instructions. The short version:
 
-1. Create a free [Supabase](https://supabase.com) project
-2. Create a free [Google Cloud](https://console.cloud.google.com) project (for Drive API)
-3. Create a free [Vercel](https://vercel.com) account
-4. Run `npm run deploy`
+1. Run Clario locally — your data lives on your device, no server required
+2. (Optional) Host a lightweight sync service to share groups across devices and people
+3. Run `npm run deploy` to stand up that optional sync layer
 
-Total monthly cost: **$0** for groups under ~500 users.
+Total monthly cost: **$0** — there's nothing to run unless you want multi-device sync.
 
 ---
 
