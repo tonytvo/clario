@@ -29,6 +29,8 @@ import type {
   UploadReceiptFromPathInput,
   UploadReceiptFromPathOutput,
 } from "./schemas.ts";
+import type { LedgerStore } from "../ports/ledgerStore.ts";
+import { RecordExpenseService } from "../domain/recordExpense.ts";
 
 const MIME_TYPES: Record<string, string> = {
   ".jpg": "image/jpeg",
@@ -118,68 +120,10 @@ export async function getExpenses(
 
 export async function addExpense(
   input: In<typeof AddExpenseInput>,
-  supabase: SupabaseClient,
+  store: LedgerStore,
   userId: string
 ): Promise<Out<typeof AddExpenseOutput>> {
-  const today = new Date().toISOString().split("T")[0];
-
-  // 1. Insert the expense
-  const { data: expense, error: expErr } = await supabase
-    .from("expenses")
-    .insert({
-      group_id: input.group_id,
-      title: input.title,
-      amount: input.amount,
-      currency: input.currency,
-      category: input.category,
-      date: input.date ?? today,
-      notes: input.notes,
-      paid_by: userId,
-    })
-    .select("id")
-    .single();
-
-  if (expErr) throw new Error(`Failed to create expense: ${expErr.message}`);
-
-  // 2. Calculate splits
-  const allMembers = [...new Set([userId, ...input.split_with])];
-  const perPerson =
-    input.split_amounts ??
-    Object.fromEntries(
-      allMembers.map((id) => [id, Math.round((input.amount / allMembers.length) * 100) / 100])
-    );
-
-  // 3. Insert splits
-  const splits = allMembers.map((uid) => ({
-    expense_id: expense.id,
-    user_id: uid,
-    amount: perPerson[uid] ?? 0,
-    settled: uid === userId, // payer's own split is auto-settled
-  }));
-
-  const { error: splitErr } = await supabase
-    .from("expense_splits")
-    .insert(splits);
-
-  if (splitErr) throw new Error(`Failed to create splits: ${splitErr.message}`);
-
-  // 4. Fetch display names for the response
-  const { data: profiles } = await supabase
-    .from("profiles")
-    .select("id, display_name")
-    .in("id", allMembers);
-
-  const nameMap = new Map((profiles ?? []).map((p: any) => [p.id, p.display_name]));
-
-  return {
-    expense_id: expense.id,
-    message: `Added "${input.title}" ($${input.amount.toFixed(2)}) and split it ${allMembers.length} ways.`,
-    splits: allMembers.map((uid) => ({
-      user_id: uid,
-      user_name: String(nameMap.get(uid) ?? uid),
-      amount: perPerson[uid] ?? 0,
-    })),
-  };
+  return new RecordExpenseService(store).record(input, userId);
 }
 
 // ── get_balances ──────────────────────────────────────────────────────────

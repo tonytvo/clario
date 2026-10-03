@@ -28,6 +28,8 @@ import {
   attachReceipt,
 } from "../tools/handlers.ts";
 import { createUserClient, getUserIdFromJwt } from "../lib/supabase.ts";
+import { createLedgerStore } from "../adapters/factory.ts";
+import { DomainError } from "../domain/errors.ts";
 
 type Env = {
   Variables: {
@@ -92,7 +94,6 @@ export function createOpenApiRouter() {
     app.post(`/api/tools/${tool.name}`, async (c) => {
       const jwt = c.get("jwt") as string;
       const userId = c.get("userId") as string;
-      const supabase = createUserClient(jwt);
 
       let body: unknown;
       try {
@@ -114,9 +115,15 @@ export function createOpenApiRouter() {
 
       try {
         const handler = HANDLERS[tool.name];
-        const result = await handler(input, supabase, userId);
+        // add_expense runs on the local-first ledger port; other tools use Supabase.
+        const dep = tool.name === "add_expense" ? createLedgerStore() : createUserClient(jwt);
+        const result = await handler(input, dep, userId);
         return c.json(result);
       } catch (err) {
+        if (err instanceof DomainError) {
+          const status = err.code === "NOT_A_MEMBER" ? 403 : 400;
+          return c.json({ error: err.message, code: err.code }, status);
+        }
         const message = err instanceof Error ? err.message : "Internal server error";
         console.error(`[${tool.name}] Error:`, err);
         return c.json({ error: message }, 500);

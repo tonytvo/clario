@@ -6,7 +6,7 @@
  */
 
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { getExpenses, getBalances, addExpense } from "../src/tools/handlers.ts";
+import { getExpenses, getBalances } from "../src/tools/handlers.ts";
 
 // ── Mock Supabase client ──────────────────────────────────────────────────
 
@@ -128,60 +128,5 @@ describe("getBalances", () => {
     const result = await getBalances({}, supabase as any, TEST_USER_ID);
     expect(result.balances).toHaveLength(0);
     expect(result.your_net).toBe(0);
-  });
-});
-
-// ── addExpense ────────────────────────────────────────────────────────────
-
-describe("addExpense", () => {
-  it("calculates equal splits correctly", async () => {
-    const supabase = {
-      from: vi.fn().mockReturnValue({
-        insert: vi.fn().mockReturnThis(),
-        select: vi.fn().mockReturnThis(),
-        in: vi.fn().mockReturnThis(),
-        single: vi.fn().mockResolvedValue({ data: { id: "new-expense-id" }, error: null }),
-      }),
-    };
-
-    // Override for the profiles fetch
-    let callCount = 0;
-    (supabase.from as any).mockImplementation((table: string) => {
-      if (table === "profiles") {
-        return {
-          select: vi.fn().mockReturnThis(),
-          in: vi.fn().mockResolvedValue({
-            data: [
-              { id: TEST_USER_ID, display_name: "You" },
-              { id: OTHER_USER_ID, display_name: "Alex" },
-            ],
-            error: null,
-          }),
-        };
-      }
-      return {
-        insert: vi.fn().mockReturnThis(),
-        select: vi.fn().mockReturnThis(),
-        in: vi.fn().mockReturnThis(),
-        single: vi.fn().mockResolvedValue({ data: { id: "new-expense-id" }, error: null }),
-      };
-    });
-
-    const result = await addExpense(
-      {
-        group_id: TEST_GROUP_ID,
-        title: "Test expense",
-        amount: 100,
-        currency: "CAD",
-        category: "Other",
-        split_with: [TEST_USER_ID, OTHER_USER_ID],
-      },
-      supabase as any,
-      TEST_USER_ID
-    );
-
-    expect(result.expense_id).toBe("new-expense-id");
-    expect(result.message).toContain("Test expense");
-    expect(result.splits).toHaveLength(2);
   });
 });

@@ -20,6 +20,8 @@ import {
   uploadReceiptFromPath,
 } from "../tools/handlers.ts";
 import { createUserClient, createServiceClient, getUserIdFromJwt } from "../lib/supabase.ts";
+import { createLedgerStore } from "../adapters/factory.ts";
+import { DomainError } from "../domain/errors.ts";
 
 const HANDLERS: Record<string, Function> = {
   get_expenses: getExpenses,
@@ -51,10 +53,18 @@ function createMcpServer() {
         const input = tool.inputSchema.parse(args);
 
         try {
+          // add_expense runs on the local-first ledger port; other tools use Supabase.
           // supabase is guaranteed non-null here since error check above returned early
-          const result = await HANDLERS[tool.name](input, supabase!, userId!);
+          const dep = tool.name === "add_expense" ? createLedgerStore() : supabase!;
+          const result = await HANDLERS[tool.name](input, dep, userId!);
           return { content: [{ type: "text", text: JSON.stringify(result, null, 2) }] };
         } catch (err) {
+          if (err instanceof DomainError) {
+            return {
+              content: [{ type: "text", text: `${err.code}: ${err.message}` }],
+              isError: true,
+            };
+          }
           const message = err instanceof Error ? err.message : "Unknown error";
           return { content: [{ type: "text", text: `Error: ${message}` }], isError: true };
         }
