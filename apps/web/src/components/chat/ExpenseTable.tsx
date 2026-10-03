@@ -1,7 +1,7 @@
 "use client";
 import { useState } from "react";
 
-export const COLUMN_DEFS: Record<string, { label: string; width: string; numeric?: boolean; badge?: boolean }> = {
+const COLUMN_DEFS: Record<string, { label: string; width: string; numeric?: boolean; badge?: boolean }> = {
   title:      { label: "Description",  width: "200px" },
   amount:     { label: "Total",        width: "100px", numeric: true },
   my_share:   { label: "My share",     width: "100px", numeric: true },

@@ -18,12 +18,13 @@ import {
   getGroups,
   attachReceipt,
   uploadReceiptFromPath,
+  type ToolHandler,
 } from "../tools/handlers.ts";
 import { createUserClient, createServiceClient, getUserIdFromJwt } from "../lib/supabase.ts";
 import { createLedgerStore } from "../adapters/factory.ts";
 import { DomainError } from "../domain/errors.ts";
 
-const HANDLERS: Record<string, Function> = {
+const HANDLERS: Record<string, ToolHandler> = {
   get_expenses: getExpenses,
   add_expense: addExpense,
   get_balances: getBalances,

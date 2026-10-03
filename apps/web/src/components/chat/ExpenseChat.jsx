@@ -1,6 +1,6 @@
 "use client";
 import { useState, useRef, useEffect } from "react";
-import { ExpenseTable, DEFAULT_COLUMNS, ALL_COLUMNS, COLUMN_DEFS } from "./ExpenseTable";
+import { ExpenseTable, DEFAULT_COLUMNS, ALL_COLUMNS, } from "./ExpenseTable";
 import { AddExpenseForm } from "../expense/AddExpenseForm";
 
 // ─── Dev-mode sample data ────────────────────────────────────────────────────
@@ -33,7 +33,7 @@ function parseIntent(raw) {
 
   // Best-effort prefill from the message text
   const amountMatch = raw.match(/\$(\d+(?:\.\d{1,2})?)/);
-  const amount = amountMatch ? parseFloat(amountMatch[1]) : undefined;
+  const amount = amountMatch ? Number.parseFloat(amountMatch[1]) : undefined;
 
   const titleMatch = raw.match(/(?:for|on)\s+(.+?)(?:\s+with|\s+split|\s+last|\s+today|\s+yesterday|$)/i);
   const title = titleMatch?.[1]?.trim();
@@ -52,7 +52,7 @@ function parseIntent(raw) {
 
 function parseQuery(raw) {
   const q = raw.toLowerCase();
-  let filters = {};
+  const filters = {};
   let columns = [...DEFAULT_COLUMNS];
   let sortBy = "date";
   let sortDir = "desc";
@@ -61,8 +61,8 @@ function parseQuery(raw) {
 
   if (/\bi paid\b|\bpaid by me\b|\bi('ve)? paid\b/.test(q)) { filters.i_paid = true; title = "Expenses I paid"; }
   if (/\b(not paid|unpaid|owe|i owe)\b/.test(q)) { filters.i_paid = false; title = "Expenses I haven't paid"; }
-  if (/\bsettled\b/.test(q) && !/\bunsettled\b/.test(q)) { filters.settled = true; title = (title || "Expenses") + " (settled)"; }
-  if (/\bunsettled\b|\bnot settled\b/.test(q)) { filters.settled = false; title = (title || "Expenses") + " (unsettled)"; }
+  if (/\bsettled\b/.test(q) && !/\bunsettled\b/.test(q)) { filters.settled = true; title = `${title || "Expenses"} (settled)`; }
+  if (/\bunsettled\b|\bnot settled\b/.test(q)) { filters.settled = false; title = `${title || "Expenses"} (unsettled)`; }
   if (/\bwith receipt\b|\bhas receipt\b|\breceipts?\b/.test(q)) { filters.has_receipt = true; if (!title) title = "Expenses with receipts"; }
   if (/\bno receipt\b|\bwithout receipt\b/.test(q)) { filters.has_receipt = false; }
 
@@ -102,7 +102,8 @@ function applyQuery(expenses, { filters, sortBy, sortDir }) {
     else result = result.filter((e) => e[key] === val);
   }
   result.sort((a, b) => {
-    const av = a[sortBy], bv = b[sortBy];
+    const av = a[sortBy];
+    const bv = b[sortBy];
     const cmp = typeof av === "number" ? av - bv : String(av).localeCompare(String(bv));
     return sortDir === "desc" ? -cmp : cmp;
   });
@@ -178,6 +179,7 @@ export default function ExpenseChat() {
   const bottomRef = useRef(null);
   const inputRef = useRef(null);
 
+  // biome-ignore lint/correctness/useExhaustiveDependencies: messages/typing are intentional re-run triggers — scroll to bottom whenever a new message arrives or the typing indicator toggles
   useEffect(() => { bottomRef.current?.scrollIntoView({ behavior: "smooth" }); }, [messages, typing]);
 
   function buildQueryReply(query) {
@@ -285,7 +287,7 @@ export default function ExpenseChat() {
           </div>
           <div style={{ display: "flex", gap: "8px" }}>
             {["Apartment", "Banff trip", "Dinner club"].map((g) => (
-              <button key={g} onClick={() => send(`Show ${g} expenses`)}
+              <button type="button" key={g} onClick={() => send(`Show ${g} expenses`)}
                 style={{ fontSize: "11px", padding: "4px 10px", borderRadius: "20px", border: "1px solid #e2e8f0", background: "none", color: "#64748b", cursor: "pointer" }}>
                 {g}
               </button>
@@ -305,7 +307,7 @@ export default function ExpenseChat() {
         {/* ── Suggestions ── */}
         <div style={{ padding: "0 24px 10px", display: "flex", gap: "6px", flexWrap: "wrap" }}>
           {SUGGESTIONS.map((s) => (
-            <button key={s} onClick={() => send(s)}
+            <button type="button" key={s} onClick={() => send(s)}
               style={{ fontSize: "12px", padding: "5px 12px", borderRadius: "20px", border: "1px solid #e2e8f0", background: "#f8fafc", color: "#475569", cursor: "pointer", transition: "all .15s", fontFamily: "'DM Sans',sans-serif" }}
               onMouseEnter={(e) => { e.target.style.background = "#f1f5f9"; e.target.style.borderColor = "#cbd5e1"; }}
               onMouseLeave={(e) => { e.target.style.background = "#f8fafc"; e.target.style.borderColor = "#e2e8f0"; }}>
@@ -325,7 +327,7 @@ export default function ExpenseChat() {
               style={{ flex: 1, fontSize: "14px", lineHeight: 1.5, color: "#1e293b", border: "none", background: "none", resize: "none", fontFamily: "'DM Sans',sans-serif", minHeight: "20px", maxHeight: "120px", overflow: "auto" }}
               rows={1}
               onInput={(e) => { e.target.style.height = "auto"; e.target.style.height = `${e.target.scrollHeight}px`; }} />
-            <button onClick={() => send()}
+            <button type="button" onClick={() => send()}
               disabled={!input.trim() || typing}
               style={{ width: "36px", height: "36px", borderRadius: "10px", border: "none", background: input.trim() && !typing ? "#0f172a" : "#e2e8f0", color: input.trim() && !typing ? "white" : "#94a3b8", cursor: input.trim() && !typing ? "pointer" : "default", display: "flex", alignItems: "center", justifyContent: "center", fontSize: "16px", flexShrink: 0, transition: "all .15s" }}>
               ↑

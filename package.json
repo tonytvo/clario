@@ -16,7 +16,7 @@
     "db:types": "supabase gen types typescript --local > packages/shared/src/database.types.ts",
     "lint": "biome lint ./apps ./packages",
     "format": "biome format --write ./apps ./packages",
-    "typecheck": "tsc --build",
+    "typecheck": "tsc -p packages/api/tsconfig.json && tsc -p apps/web/tsconfig.json",
     "refactor:check": "knip",
     "quality": "npm run lint && npm run typecheck && npm run refactor:check",
     "prepare": "husky"

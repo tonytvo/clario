@@ -14,11 +14,11 @@
  *   5. Opens the browser automatically
  */
 
-import { execSync, spawn } from "child_process";
-import { existsSync, mkdirSync } from "fs";
-import { join } from "path";
-import { homedir, platform } from "os";
-import { createServer } from "http";
+import { execSync, spawn } from "node:child_process";
+import { existsSync, mkdirSync } from "node:fs";
+import { join } from "node:path";
+import { homedir, platform } from "node:os";
+import { createServer } from "node:http";
 
 const APP_DIR = join(homedir(), ".clario");
 const REPO_URL = "https://github.com/YOUR_USERNAME/clario";

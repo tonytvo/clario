@@ -44,6 +44,15 @@ const MIME_TYPES: Record<string, string> = {
 type In<T extends z.ZodType> = z.infer<T>;
 type Out<T extends z.ZodType> = z.infer<T>;
 
+/**
+ * Shape of a tool handler for the MCP/OpenAPI dispatch tables. Handlers have
+ * heterogeneous input types and take either a SupabaseClient or the LedgerStore
+ * port as their dependency, so the dispatch signature is intentionally loose;
+ * inputs are already Zod-validated before a handler is invoked.
+ */
+// biome-ignore lint/suspicious/noExplicitAny: dynamic dispatch over handlers with differing input/dep types
+export type ToolHandler = (...args: any[]) => Promise<unknown>;
+
 // ── get_expenses ──────────────────────────────────────────────────────────
 
 export async function getExpenses(

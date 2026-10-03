@@ -5,7 +5,7 @@
  * Run: npm test
  */
 
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { describe, it, expect, vi, } from "vitest";
 import { getExpenses, getBalances } from "../src/tools/handlers.ts";
 
 // ── Mock Supabase client ──────────────────────────────────────────────────

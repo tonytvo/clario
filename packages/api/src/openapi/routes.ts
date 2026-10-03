@@ -26,6 +26,7 @@ import {
   settleUp,
   getGroups,
   attachReceipt,
+  type ToolHandler,
 } from "../tools/handlers.ts";
 import { createUserClient, getUserIdFromJwt } from "../lib/supabase.ts";
 import { createLedgerStore } from "../adapters/factory.ts";
@@ -38,7 +39,7 @@ type Env = {
   };
 };
 
-const HANDLERS: Record<string, Function> = {
+const HANDLERS: Record<string, ToolHandler> = {
   get_expenses: getExpenses,
   add_expense: addExpense,
   get_balances: getBalances,

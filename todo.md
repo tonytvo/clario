@@ -1,0 +1,3 @@
+- remove the superbase and web and desktop
+- do spdd analysis on the architecture the data flow
+- another spdd analysis on the full flow where user can record an expense and ask claude to show the expense.

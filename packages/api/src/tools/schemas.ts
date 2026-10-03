@@ -236,5 +236,3 @@ export const TOOL_REGISTRY = [
     outputSchema: AttachReceiptOutput,
   },
 ] as const;
-
-type ToolName = typeof TOOL_REGISTRY[number]["name"];
