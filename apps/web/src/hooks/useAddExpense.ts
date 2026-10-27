@@ -17,7 +17,7 @@ type State = {
   result: AddExpenseOutput | null;
 };
 
-// Placeholder UUIDs used when API is not yet wired to real Supabase data.
+// Placeholder UUIDs used until group/member data comes from the local ledger.
 // These are replaced once group/member management is implemented.
 const PLACEHOLDER_GROUP_ID = "00000000-0000-0000-0000-000000000000";
 const PLACEHOLDER_MEMBER_ID = "00000000-0000-0000-0000-000000000001";

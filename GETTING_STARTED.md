@@ -21,21 +21,15 @@ git push -u origin main
 ## 3. Fill in environment variables
 
 ```bash
-cp .env.example .env
 cp packages/api/.env.example packages/api/.env
-# Edit both .env files with your Supabase + Google credentials
+# Set CLARIO_USER_ID (your local identity) and optionally LEDGER_FILE
 ```
 
-## 4. Run the DB migrations
+## 4. Start dev
 
 ```bash
 npm install
-npm run db:migrate
-```
 
-## 5. Start dev
-
-```bash
 # Web app (Next.js)
 npm run dev
 
@@ -43,10 +37,5 @@ npm run dev
 npm run dev --workspace=packages/api
 ```
 
-## 6. Deploy everything for free
-
-```bash
-npm run deploy
-```
-
-See README.md and docs/self-hosting.md for full details.
+Clario is local-first: there is no database to provision and nothing to deploy.
+See README.md for details.

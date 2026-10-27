@@ -5,7 +5,7 @@
  *   1. User picks a file (via <input> or drag-drop)
  *   2. uploadAndShare() uploads it to their Drive using their OAuth access token
  *   3. We automatically grant "anyone with link → reader" permission
- *   4. We return the share URL + embed URL — only these strings are stored in our DB
+ *   4. We return the share URL + embed URL — only these strings are stored in the ledger
  *
  * Privacy: we request the `drive.file` scope only, which restricts access
  * to files the user explicitly picks through this app. We never see other Drive files.
@@ -16,7 +16,7 @@ const DRIVE_FILES_URL = "https://www.googleapis.com/drive/v3/files";
 
 export interface DriveUploadResult {
   fileId: string;
-  url: string;       // shareable view URL — stored in DB
+  url: string;       // shareable view URL — stored in the ledger
   embedUrl: string;  // preview URL — for inline display
   filename: string;
 }
@@ -126,17 +126,4 @@ export function buildEmbedUrl(viewUrl: string): string {
   } catch {
     return viewUrl;
   }
-}
-
-/**
- * Get the Google OAuth access token from Supabase session.
- * Supabase stores the provider token after Google OAuth sign-in.
- */
-export function getDriveAccessToken(session: { provider_token?: string | null }): string {
-  if (!session.provider_token) {
-    throw new Error(
-      "No Google Drive access token found. Make sure you signed in with Google and granted Drive access."
-    );
-  }
-  return session.provider_token;
 }

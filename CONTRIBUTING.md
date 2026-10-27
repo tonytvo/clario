@@ -32,7 +32,7 @@ Or manually paste `docs/spdd/commands/add-feature.md` into Claude/ChatGPT/Cursor
 AI produces the code. You review it:
 - Does it follow the existing patterns?
 - Does it respect user privacy (no files stored on our server)?
-- Does RLS protect the new data?
+- Are authorization checks enforced in the domain layer (not left to storage)?
 
 ### 4. Run quality checks
 
@@ -52,7 +52,7 @@ Push your branch and open a PR. The template will guide you through what to desc
 
 - **Hooks**: `use[Verb][Noun].ts` in `apps/web/src/hooks/`
 - **Components**: `PascalCase.tsx` in `apps/web/src/components/[feature]/`
-- **SQL**: snake_case, RLS on every table, migrations numbered `NNN_description.sql`
+- **Persistence**: domain code depends on ports in `packages/api/src/ports/`, never on a storage technology
 - **Secrets**: never in code — always in `.env` (which is gitignored)
 - **Receipts**: files always go to user's Google Drive — never to our server
 

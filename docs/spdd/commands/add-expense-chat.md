@@ -4,13 +4,12 @@
 
 Clario monorepo. The API layer is fully implemented:
 - `packages/api/src/tools/handlers.ts` — 6 handlers incl. `addExpense`, `getExpenses`
-- `packages/api/src/openapi/routes.ts` — REST at `POST /api/tools/{tool_name}`, Bearer JWT auth
+- `packages/api/src/openapi/routes.ts` — REST at `POST /api/tools/{tool_name}`, X-API-Key auth
 - `packages/api/src/tools/schemas.ts` — Zod schemas (canonical type definitions)
 - `packages/shared/src/types.ts` — TS types mirroring the Zod schemas (no zod dep in web)
 
 The web app (`apps/web`) has:
 - `src/components/chat/ExpenseChat.jsx` — chat UI using **mock data only**
-- `src/lib/supabase/client.ts` — Supabase browser client (needs env vars)
 - No page files, no API client, no package.json yet (will be created separately)
 
 Domain ubiquitous language:
@@ -67,7 +66,7 @@ Produce in this order:
 1. `packages/shared/src/types.ts` — shared domain types
 2. `packages/shared/src/index.ts` — barrel export
 3. `packages/shared/package.json` — minimal package descriptor
-4. `apps/web/package.json` — Next.js 14, React 18, @supabase/ssr
+4. `apps/web/package.json` — Next.js 14, React 18
 5. `apps/web/next.config.ts` — minimal Next.js config
 6. `apps/web/tsconfig.json` — standalone TS config with path alias `@/*`
 7. `apps/web/src/app/layout.tsx` — root layout (DM Sans font, metadata)
@@ -103,7 +102,7 @@ npm run dev   # from repo root → starts Next.js on :3000
 # 4. Type "show all expenses" → see expense table (mock data)
 ```
 
-After API is wired (Supabase set up):
+After the API is running locally:
 ```bash
 NEXT_PUBLIC_API_URL=http://localhost:3001 npm run dev
 # Submitting form now makes a real POST /api/tools/add_expense

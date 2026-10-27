@@ -1,6 +1,6 @@
 /**
  * RecordExpenseService tests — exercise the recording business rules directly
- * against an in-memory fake of the LedgerStore port (no Supabase, no CRDT).
+ * against an in-memory fake of the LedgerStore port (no CRDT).
  *
  * Run: npm test
  */

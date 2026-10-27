@@ -19,7 +19,6 @@ Or paste the contents into any AI chat.
 |---|---|
 | `add-feature.md` | Scaffold a new feature end-to-end |
 | `refactor-component.md` | Refactor a React component using Knip + Biome |
-| `add-migration.md` | Add a new Supabase migration with RLS |
 | `quality-check.md` | Run full quality pipeline and fix issues |
 | `write-test.md` | Write tests for a given module |
 

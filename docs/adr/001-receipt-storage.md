@@ -5,7 +5,7 @@
 
 ## Context
 
-Clario needs to support attaching receipt images and PDFs to expenses. The naive approach is to upload files to our own storage (Supabase Storage / S3). This has costs and privacy implications.
+Clario needs to support attaching receipt images and PDFs to expenses. The naive approach is to upload files to our own storage (e.g. S3 or a hosted object store). This has costs and privacy implications.
 
 ## Decision
 
@@ -30,6 +30,6 @@ Receipt files are stored in the user's own Google Drive. Clario only stores a sh
 
 ## Alternatives considered
 
-- **Supabase Storage**: costs money at scale, files stored on our servers
+- **Hosted object storage (e.g. S3)**: costs money at scale, files stored on our servers
 - **Ask user to paste a manual share link**: bad UX, user must remember to set sharing settings
 - **PocketBase self-hosted**: viable alternative for self-hosters, documented in README

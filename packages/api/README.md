@@ -1,7 +1,7 @@
 # Clario API
 
 > Dual-spec API server: **MCP** (Claude) + **OpenAPI** (ChatGPT Actions) from one codebase.
-> One set of tool handlers, two adapters, one Supabase backend.
+> One set of tool handlers, two adapters, one local-first ledger.
 
 ---
 
@@ -16,19 +16,28 @@ src/
     adapter.ts      ← MCP adapter (wraps handlers as MCP tools)
   openapi/
     routes.ts       ← Hono routes (wraps handlers as REST endpoints)
-  lib/
-    supabase.ts     ← Supabase client factory
+  domain/           ← Business rules + authorization (recordExpense, allocateEqual)
+  ports/
+    ledgerStore.ts  ← Technology-neutral persistence port
+  adapters/
+    localLedgerStore.ts ← In-memory / JSON-file ledger (CRDT adapter later)
+    factory.ts      ← Selects the LedgerStore implementation
   index.ts          ← Entry point — stdio MCP or HTTP server
 ```
 
 Adding a new tool = add a schema + handler. Both adapters pick it up automatically.
+
+**Status:** `add_expense` runs on the local ledger. `get_expenses`, `get_balances`,
+`settle_up`, `get_groups`, `attach_receipt` and `upload_receipt_from_path` are
+**stubs** — they return empty or placeholder results and persist nothing until
+their slices of the local-first ledger are built.
 
 ---
 
 ## Quick start (dev)
 
 ```bash
-cp .env.example .env   # fill in Supabase keys
+cp .env.example .env   # set CLARIO_USER_ID (and optionally LEDGER_FILE)
 npm install
 npm run dev            # HTTP server on :3000
 ```
@@ -56,8 +65,8 @@ or `%APPDATA%\Claude\claude_desktop_config.json` (Windows):
       "args": ["/absolute/path/to/clario-api/dist/index.js"],
       "env": {
         "TRANSPORT": "stdio",
-        "SUPABASE_URL": "https://your-project.supabase.co",
-        "SUPABASE_SERVICE_ROLE_KEY": "your-key"
+        "CLARIO_USER_ID": "your-local-user-uuid",
+        "LEDGER_FILE": "/absolute/path/to/clario-ledger.json"
       }
     }
   }
@@ -66,46 +75,22 @@ or `%APPDATA%\Claude\claude_desktop_config.json` (Windows):
 
 Then restart Claude Desktop. Clario tools appear automatically.
 
-### Option B: Remote MCP server (Claude.ai web)
-
-Deploy to Railway (free tier), then in Claude.ai:
-Settings → Integrations → Add MCP server → paste your Railway URL.
-
 ---
 
 ## Connecting to ChatGPT
 
-1. Deploy to Railway (see below) — get your public URL
+ChatGPT Actions need a public HTTPS URL, so expose your local server through a
+tunnel (e.g. `cloudflared tunnel --url http://localhost:3000`) and set
+`PUBLIC_API_URL` to the tunnel URL.
+
+1. Run `npm run dev` and start the tunnel
 2. Go to [chat.openai.com](https://chat.openai.com) → Explore GPTs → Create
 3. In **Configure**:
    - Name: `Clario`
    - Instructions: *(paste the system prompt from docs/gpt-system-prompt.md)*
-4. Click **Add actions** → paste: `https://your-app.railway.app/api/openapi.json`
+4. Click **Add actions** → paste: `https://your-tunnel-url/api/openapi.json`
 5. ChatGPT reads the spec automatically and configures all tool endpoints
-6. Under **Authentication**: API Key → paste your `API_SECRET_KEY`
-7. Save and share the GPT link with your group
-
----
-
-## Deploy for free (Railway)
-
-```bash
-# Install Railway CLI
-npm install -g @railway/cli
-
-# Login + deploy
-railway login
-railway init
-railway up
-
-# Set environment variables
-railway variables set SUPABASE_URL=https://...
-railway variables set SUPABASE_SERVICE_ROLE_KEY=...
-railway variables set API_SECRET_KEY=$(openssl rand -hex 32)
-railway variables set TRANSPORT=http
-```
-
-Railway free tier: 500 hours/month — enough for a small group's expense tracker.
+6. Under **Authentication**: API Key (header `X-API-Key`) → paste your `API_SECRET_KEY`
 
 ---
 
@@ -129,12 +114,12 @@ export const MyNewOutput = z.object({ ... });
 
 3. Add the handler to `src/tools/handlers.ts`:
 ```ts
-export async function myNewTool(input, supabase, userId) { ... }
+export async function myNewTool(input, store, userId) { ... }
 ```
 
 4. Register in `HANDLERS` map in both `src/mcp/adapter.ts` and `src/openapi/routes.ts`.
 
-Both Claude and ChatGPT pick up the new tool automatically on next deploy.
+Both Claude and ChatGPT pick up the new tool automatically on next restart.
 
 ---
 
@@ -144,7 +129,7 @@ Both Claude and ChatGPT pick up the new tool automatically on next deploy.
 npm test
 ```
 
-Tests mock Supabase — no real DB needed for CI.
+Tests run against in-memory ledgers — no database needed for CI.
 
 ---
 

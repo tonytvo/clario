@@ -16,7 +16,6 @@ Clario is a Splitwise-style expense tracker where **you own your data**. Your re
 - **Local-first** — your data lives on your device and works fully offline.
 - No subscription. No ads. No receipt storage fees.
 - One-command install for non-technical users (Windows, Mac, Linux)
-- One-command deploy for self-hosters
 - Fully open source — contribute or fork freely
 - Built using [Structured Prompt Driven Development (SPDD)](https://github.com/gszhangwei/open-spdd)
 
@@ -41,15 +40,9 @@ npm install
 npm run dev                 # runs locally, data stored on-device
 ```
 
-### Deploy your own instance (free)
+### No server to deploy
 
-Clario is local-first — it runs on your device with **no backend required**. To share a group and sync across devices, you can optionally host a lightweight sync service:
-
-```bash
-npm run deploy
-```
-
-The sync layer is deliberately swappable (CRDT engine TBD), and the whole thing runs at **$0/month** for small groups.
+Clario is local-first — it runs on your device with **no backend and no account**. Sharing a group across devices and people will come from CRDT-based sync; the engine and transport are deliberately undecided and sit behind a swappable persistence port.
 
 ---
 
@@ -85,18 +78,6 @@ Receipts are yours. When you attach a receipt to an expense:
 This project is built with AI assistance using SPDD. See [CONTRIBUTING.md](CONTRIBUTING.md) and [docs/spdd/](docs/spdd/) for how to contribute using Claude or any AI assistant.
 
 Every feature starts as a prompt template in `docs/spdd/commands/`. AI does the scaffolding, humans review.
-
----
-
-## Self-hosting
-
-See [docs/self-hosting.md](docs/self-hosting.md) for full instructions. The short version:
-
-1. Run Clario locally — your data lives on your device, no server required
-2. (Optional) Host a lightweight sync service to share groups across devices and people
-3. Run `npm run deploy` to stand up that optional sync layer
-
-Total monthly cost: **$0** — there's nothing to run unless you want multi-device sync.
 
 ---
 

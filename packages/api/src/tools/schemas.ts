@@ -173,8 +173,7 @@ export const AttachReceiptOutput = z.object({
 
 // ── upload_receipt_from_path ──────────────────────────────────────────────────
 // MCP-only (not in TOOL_REGISTRY — only registered in the MCP adapter).
-// Claude Desktop reads the file from disk and uploads it to Supabase Storage,
-// then stores only the resulting URL in the DB.
+// The receipt stays on the user's device; it is referenced by a file:// URL.
 
 export const UploadReceiptFromPathInput = z.object({
   expense_id: UUID,
@@ -185,7 +184,7 @@ export const UploadReceiptFromPathInput = z.object({
 
 export const UploadReceiptFromPathOutput = z.object({
   receipt_id: UUID,
-  url: z.string().url().describe("Public URL of the uploaded receipt in Supabase Storage."),
+  url: z.string().url().describe("file:// URL of the receipt on the local machine."),
   message: z.string(),
 });
 

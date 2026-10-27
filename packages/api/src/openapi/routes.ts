@@ -4,13 +4,13 @@
  * ChatGPT calls these endpoints when the user invokes a GPT Action.
  * Each route:
  *   1. Validates the API key (set in the Custom GPT's auth settings)
- *   2. Extracts the Supabase JWT from the Authorization header
+ *   2. Acts as the local user (CLARIO_USER_ID) — Clario is local-first, no accounts
  *   3. Validates the request body with Zod
  *   4. Calls the shared handler
  *   5. Returns JSON
  *
  * URL pattern: POST /api/tools/{tool_name}
- * Auth:        Bearer <supabase_jwt>   OR   X-API-Key <api_secret_key>
+ * Auth:        X-API-Key <api_secret_key>
  */
 
 import { Hono } from "hono";
@@ -28,13 +28,11 @@ import {
   attachReceipt,
   type ToolHandler,
 } from "../tools/handlers.ts";
-import { createUserClient, getUserIdFromJwt } from "../lib/supabase.ts";
 import { createLedgerStore } from "../adapters/factory.ts";
 import { DomainError } from "../domain/errors.ts";
 
 type Env = {
   Variables: {
-    jwt: string;
     userId: string;
   };
 };
@@ -57,44 +55,29 @@ export function createOpenApiRouter() {
     cors({
       origin: (process.env.ALLOWED_ORIGINS ?? "https://chat.openai.com,https://chatgpt.com").split(","),
       allowMethods: ["GET", "POST", "OPTIONS"],
-      allowHeaders: ["Content-Type", "Authorization", "X-API-Key"],
+      allowHeaders: ["Content-Type", "X-API-Key"],
     })
   );
 
   // ── Auth middleware ─────────────────────────────────────────
   app.use("/api/tools/*", async (c, next) => {
-    const authHeader = c.req.header("Authorization");
-    const apiKey = c.req.header("X-API-Key");
     const expectedKey = process.env.API_SECRET_KEY;
-
-    // Option 1: API key auth (for ChatGPT Actions — simple and reliable)
-    if (apiKey && expectedKey && apiKey === expectedKey) {
-      // When using API key, the Supabase JWT is expected as a separate header
-      const jwt = c.req.header("X-Supabase-JWT");
-      if (!jwt) {
-        throw new HTTPException(401, { message: "X-Supabase-JWT header required with API key auth" });
-      }
-      c.set("jwt", jwt);
-      c.set("userId", getUserIdFromJwt(jwt));
-      return next();
+    if (!expectedKey || c.req.header("X-API-Key") !== expectedKey) {
+      throw new HTTPException(401, { message: "Authentication required. Provide a valid X-API-Key." });
     }
 
-    // Option 2: Bearer JWT (Supabase JWT directly)
-    if (authHeader?.startsWith("Bearer ")) {
-      const jwt = authHeader.slice(7);
-      c.set("jwt", jwt);
-      c.set("userId", getUserIdFromJwt(jwt));
-      return next();
+    const userId = process.env.CLARIO_USER_ID;
+    if (!userId) {
+      throw new HTTPException(500, { message: "No local user configured. Set CLARIO_USER_ID." });
     }
-
-    throw new HTTPException(401, { message: "Authentication required. Provide Bearer JWT or X-API-Key." });
+    c.set("userId", userId);
+    return next();
   });
 
   // ── Tool routes ─────────────────────────────────────────────
   for (const tool of TOOL_REGISTRY) {
     app.post(`/api/tools/${tool.name}`, async (c) => {
-      const jwt = c.get("jwt") as string;
-      const userId = c.get("userId") as string;
+      const userId = c.get("userId");
 
       let body: unknown;
       try {
@@ -116,9 +99,7 @@ export function createOpenApiRouter() {
 
       try {
         const handler = HANDLERS[tool.name];
-        // add_expense runs on the local-first ledger port; other tools use Supabase.
-        const dep = tool.name === "add_expense" ? createLedgerStore() : createUserClient(jwt);
-        const result = await handler(input, dep, userId);
+        const result = await handler(input, createLedgerStore(), userId);
         return c.json(result);
       } catch (err) {
         if (err instanceof DomainError) {
@@ -148,7 +129,7 @@ export function createOpenApiRouter() {
 // Auto-generated from the same TOOL_REGISTRY — stays in sync automatically.
 
 function generateOpenApiSpec() {
-  const baseUrl = process.env.NEXT_PUBLIC_APP_URL ?? "https://your-api.railway.app";
+  const baseUrl = process.env.PUBLIC_API_URL ?? `http://localhost:${process.env.PORT ?? 3000}`;
 
   const paths: Record<string, any> = {};
 

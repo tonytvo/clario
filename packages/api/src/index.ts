@@ -20,14 +20,14 @@ if (transport === "stdio") {
   //     "clario": {
   //       "command": "node",
   //       "args": ["/path/to/clario-api/dist/index.js"],
-  //       "env": { "TRANSPORT": "stdio", "SUPABASE_URL": "...", ... }
+  //       "env": { "TRANSPORT": "stdio", "CLARIO_USER_ID": "...", "LEDGER_FILE": "..." }
   //     }
   //   }
   // }
   const { startStdioMcpServer } = await import("./mcp/adapter.ts");
   await startStdioMcpServer();
 } else {
-  // ── HTTP mode (Railway/Fly free tier deployment) ──────────────────────────
+  // ── HTTP mode (local server, e.g. for ChatGPT Actions via a tunnel) ────────
   // Serves both:
   //   POST /api/tools/{name}  — OpenAPI endpoints (ChatGPT Actions)
   //   GET  /api/openapi.json  — OpenAPI spec (paste URL into Custom GPT)

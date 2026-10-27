@@ -1,4 +1,5 @@
 const API_URL = process.env.NEXT_PUBLIC_API_URL;
+const API_KEY = process.env.NEXT_PUBLIC_API_KEY;
 
 export function isApiConfigured(): boolean {
   return Boolean(API_URL);
@@ -6,14 +7,13 @@ export function isApiConfigured(): boolean {
 
 export async function callTool<T>(
   toolName: string,
-  input: unknown,
-  jwt?: string
+  input: unknown
 ): Promise<T> {
   if (!API_URL) {
     throw new Error("NEXT_PUBLIC_API_URL is not set");
   }
   const headers: Record<string, string> = { "Content-Type": "application/json" };
-  if (jwt) headers.Authorization = `Bearer ${jwt}`;
+  if (API_KEY) headers["X-API-Key"] = API_KEY;
 
   const res = await fetch(`${API_URL}/api/tools/${toolName}`, {
     method: "POST",

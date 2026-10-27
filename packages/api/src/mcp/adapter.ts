@@ -1,10 +1,8 @@
 /**
  * MCP adapter — exposes all tool handlers as MCP tools.
  *
- * When transport = stdio:  Claude Desktop connects directly (local).
- *   Auth: reads CLARIO_USER_ID from env + uses service role key.
- * When transport = http:   Claude connects via HTTP (remote MCP server).
- *   Auth: expects a Supabase JWT in the MCP session metadata.
+ * Transport = stdio: Claude Desktop connects directly to the local process.
+ * Identity: the local user is CLARIO_USER_ID from env (local-first, no accounts).
  */
 
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
@@ -20,7 +18,6 @@ import {
   uploadReceiptFromPath,
   type ToolHandler,
 } from "../tools/handlers.ts";
-import { createUserClient, createServiceClient, getUserIdFromJwt } from "../lib/supabase.ts";
 import { createLedgerStore } from "../adapters/factory.ts";
 import { DomainError } from "../domain/errors.ts";
 
@@ -45,19 +42,16 @@ function createMcpServer() {
       tool.name,
       tool.description,
       tool.inputSchema.shape,
-      (async (args: Record<string, unknown>, extra: any) => {
-        const { userId, supabase, error } = resolveAuth(extra?.meta?.jwt);
-        if (error) {
-          return { content: [{ type: "text", text: error }], isError: true };
+      (async (args: Record<string, unknown>) => {
+        const userId = resolveLocalUser();
+        if (!userId) {
+          return { content: [{ type: "text", text: NOT_CONFIGURED }], isError: true };
         }
 
         const input = tool.inputSchema.parse(args);
 
         try {
-          // add_expense runs on the local-first ledger port; other tools use Supabase.
-          // supabase is guaranteed non-null here since error check above returned early
-          const dep = tool.name === "add_expense" ? createLedgerStore() : supabase!;
-          const result = await HANDLERS[tool.name](input, dep, userId!);
+          const result = await HANDLERS[tool.name](input, createLedgerStore(), userId);
           return { content: [{ type: "text", text: JSON.stringify(result, null, 2) }] };
         } catch (err) {
           if (err instanceof DomainError) {
@@ -76,18 +70,18 @@ function createMcpServer() {
   // upload_receipt_from_path — MCP-only (local file system access required)
   server.tool(
     "upload_receipt_from_path",
-    "Upload a receipt from a local file path and attach it to an expense. Reads the file from your machine, uploads it to Supabase Storage, and stores the URL. Supports JPEG, PNG, PDF, WebP.",
+    "Upload a receipt from a local file path and attach it to an expense. The file stays on your machine and is referenced by its local path. Supports JPEG, PNG, PDF, WebP.",
     UploadReceiptFromPathInput.shape,
-    (async (args: Record<string, unknown>, extra: any) => {
-      const { userId, supabase, error } = resolveAuth(extra?.meta?.jwt);
-      if (error) {
-        return { content: [{ type: "text", text: error }], isError: true };
+    (async (args: Record<string, unknown>) => {
+      const userId = resolveLocalUser();
+      if (!userId) {
+        return { content: [{ type: "text", text: NOT_CONFIGURED }], isError: true };
       }
 
       const input = UploadReceiptFromPathInput.parse(args);
 
       try {
-        const result = await uploadReceiptFromPath(input, supabase!, userId!);
+        const result = await uploadReceiptFromPath(input, createLedgerStore(), userId);
         return { content: [{ type: "text", text: JSON.stringify(result, null, 2) }] };
       } catch (err) {
         const message = err instanceof Error ? err.message : "Unknown error";
@@ -99,36 +93,11 @@ function createMcpServer() {
   return server;
 }
 
-/**
- * Resolve authentication for a tool call.
- *
- * Priority:
- *   1. JWT in session metadata  (MCP-over-HTTP, remote connections)
- *   2. CLARIO_USER_ID env var   (stdio / Claude Desktop, local use)
- */
-function resolveAuth(jwt: string | undefined) {
-  if (jwt) {
-    return {
-      userId: getUserIdFromJwt(jwt),
-      supabase: createUserClient(jwt),
-      error: null,
-    };
-  }
+const NOT_CONFIGURED = "Error: No local user configured. Set CLARIO_USER_ID in your .env.";
 
-  const envUserId = process.env.CLARIO_USER_ID;
-  if (envUserId) {
-    return {
-      userId: envUserId,
-      supabase: createServiceClient(),
-      error: null,
-    };
-  }
-
-  return {
-    userId: null,
-    supabase: null,
-    error: "Error: Not authenticated. Set CLARIO_USER_ID in your .env or sign in first.",
-  };
+/** The local-first identity: the single user this device acts as. */
+function resolveLocalUser(): string | undefined {
+  return process.env.CLARIO_USER_ID || undefined;
 }
 
 export async function startStdioMcpServer() {

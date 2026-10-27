@@ -1,132 +1,97 @@
 /**
- * Tool handler tests — test the business logic directly,
- * without needing a real Supabase instance.
+ * Tool handler tests — the non-recording tools are stubs on the local-first
+ * ledger until their slices are designed. These tests pin the stub contract.
  *
  * Run: npm test
  */
 
-import { describe, it, expect, vi, } from "vitest";
-import { getExpenses, getBalances } from "../src/tools/handlers.ts";
-
-// ── Mock Supabase client ──────────────────────────────────────────────────
-
-function makeMockSupabase(selectData: unknown, insertData?: unknown) {
-  const chain = {
-    select: vi.fn().mockReturnThis(),
-    eq: vi.fn().mockReturnThis(),
-    neq: vi.fn().mockReturnThis(),
-    in: vi.fn().mockReturnThis(),
-    not: vi.fn().mockReturnThis(),
-    is: vi.fn().mockReturnThis(),
-    order: vi.fn().mockReturnThis(),
-    limit: vi.fn().mockResolvedValue({ data: selectData, error: null }),
-    single: vi.fn().mockResolvedValue({ data: insertData ?? { id: "test-uuid" }, error: null }),
-    insert: vi.fn().mockReturnThis(),
-    update: vi.fn().mockReturnThis(),
-  };
-
-  return {
-    from: vi.fn().mockReturnValue(chain),
-    _chain: chain,
-  };
-}
+import { mkdtemp, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { describe, it, expect } from "vitest";
+import {
+  getExpenses,
+  getBalances,
+  getGroups,
+  settleUp,
+  attachReceipt,
+  uploadReceiptFromPath,
+} from "../src/tools/handlers.ts";
+import { LocalLedgerStore } from "../src/adapters/localLedgerStore.ts";
 
 const TEST_USER_ID = "00000000-0000-0000-0000-000000000001";
 const TEST_GROUP_ID = "00000000-0000-0000-0000-000000000002";
 const OTHER_USER_ID = "00000000-0000-0000-0000-000000000003";
+const TEST_EXPENSE_ID = "00000000-0000-0000-0000-000000000004";
 
-// ── get_expenses ──────────────────────────────────────────────────────────
+const store = new LocalLedgerStore();
 
-describe("getExpenses", () => {
-  it("returns empty result when no expenses", async () => {
-    const supabase = makeMockSupabase([]);
+describe("read stubs", () => {
+  it("getExpenses returns an empty result", async () => {
     const result = await getExpenses(
       { sort_by: "date", sort_order: "desc", limit: 50 },
-      supabase as any,
+      store,
       TEST_USER_ID
     );
-    expect(result.expenses).toHaveLength(0);
-    expect(result.you_owe).toBe(0);
-    expect(result.you_lent).toBe(0);
+    expect(result).toEqual({ expenses: [], total_count: 0, you_owe: 0, you_lent: 0 });
   });
 
-  it("calculates you_owe correctly for unpaid splits", async () => {
-    const mockExpenses = [
-      {
-        id: "exp-1",
-        title: "Groceries",
-        amount: "100.00",
-        currency: "CAD",
-        category: "Groceries",
-        date: "2025-05-14",
-        notes: null,
-        paid_by: { id: OTHER_USER_ID, display_name: "Alex" },
-        groups: { id: TEST_GROUP_ID, name: "Apartment" },
-        expense_splits: [{ user_id: TEST_USER_ID, amount: "25.00", settled: false }],
-        receipt_links: [],
-      },
-    ];
-
-    const supabase = makeMockSupabase(mockExpenses);
-    const result = await getExpenses(
-      { sort_by: "date", sort_order: "desc", limit: 50 },
-      supabase as any,
-      TEST_USER_ID
-    );
-
-    expect(result.expenses).toHaveLength(1);
-    expect(result.you_owe).toBe(25);
-    expect(result.you_lent).toBe(0);
-    expect(result.expenses[0].i_paid).toBe(false);
-    expect(result.expenses[0].settled).toBe(false);
+  it("getBalances returns no balances with zero net", async () => {
+    const result = await getBalances({}, store, TEST_USER_ID);
+    expect(result.balances).toHaveLength(0);
+    expect(result.your_net).toBe(0);
   });
 
-  it("calculates you_lent correctly for expenses you paid", async () => {
-    const mockExpenses = [
-      {
-        id: "exp-2",
-        title: "Pizza night",
-        amount: "80.00",
-        currency: "CAD",
-        category: "Dining",
-        date: "2025-05-10",
-        notes: null,
-        paid_by: { id: TEST_USER_ID, display_name: "You" },
-        groups: { id: TEST_GROUP_ID, name: "Apartment" },
-        expense_splits: [{ user_id: TEST_USER_ID, amount: "20.00", settled: false }],
-        receipt_links: [{ id: "r1" }],
-      },
-    ];
-
-    const supabase = makeMockSupabase(mockExpenses);
-    const result = await getExpenses(
-      { sort_by: "date", sort_order: "desc", limit: 50 },
-      supabase as any,
-      TEST_USER_ID
-    );
-
-    expect(result.expenses[0].i_paid).toBe(true);
-    expect(result.expenses[0].receipt_count).toBe(1);
-    // You lent = amount - your share = 80 - 20 = 60
-    expect(result.you_lent).toBe(60);
+  it("getGroups returns no groups", async () => {
+    const result = await getGroups({}, store, TEST_USER_ID);
+    expect(result.groups).toHaveLength(0);
   });
 });
 
-// ── getBalances ───────────────────────────────────────────────────────────
+describe("write stubs", () => {
+  it("settleUp returns a settlement id without persisting", async () => {
+    const result = await settleUp(
+      { group_id: TEST_GROUP_ID, to_user_id: OTHER_USER_ID, amount: 25, currency: "CAD" },
+      store,
+      TEST_USER_ID
+    );
+    expect(result.settlement_id).toMatch(/^[0-9a-f-]{36}$/);
+    expect(result.message).toContain("$25.00 CAD");
+  });
 
-describe("getBalances", () => {
-  it("returns empty balances with zero net when nothing owed", async () => {
-    const supabase = {
-      from: vi.fn().mockReturnValue({
-        select: vi.fn().mockReturnThis(),
-        eq: vi.fn().mockReturnThis(),
-        neq: vi.fn().mockReturnThis(),
-        in: vi.fn().mockResolvedValue({ data: [], error: null }),
-      }),
-    };
+  it("attachReceipt derives a Drive preview URL", async () => {
+    const result = await attachReceipt(
+      {
+        expense_id: TEST_EXPENSE_ID,
+        url: "https://drive.google.com/file/d/abc123/view?usp=sharing",
+        provider: "google_drive",
+      },
+      store,
+      TEST_USER_ID
+    );
+    expect(result.embed_url).toBe("https://drive.google.com/file/d/abc123/preview");
+  });
 
-    const result = await getBalances({}, supabase as any, TEST_USER_ID);
-    expect(result.balances).toHaveLength(0);
-    expect(result.your_net).toBe(0);
+  it("uploadReceiptFromPath references the local file by file:// URL", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "clario-"));
+    const file = join(dir, "receipt.png");
+    await writeFile(file, "fake");
+
+    const result = await uploadReceiptFromPath(
+      { expense_id: TEST_EXPENSE_ID, file_path: file },
+      store,
+      TEST_USER_ID
+    );
+    expect(result.url).toBe(`file://${file}`);
+  });
+
+  it("uploadReceiptFromPath rejects unsupported file types", async () => {
+    await expect(
+      uploadReceiptFromPath(
+        { expense_id: TEST_EXPENSE_ID, file_path: "/tmp/receipt.txt" },
+        store,
+        TEST_USER_ID
+      )
+    ).rejects.toThrow(/Unsupported file type/);
   });
 });

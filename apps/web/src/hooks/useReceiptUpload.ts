@@ -2,22 +2,18 @@
  * useReceiptUpload
  *
  * Handles the full receipt attachment flow:
- *   1. Gets the user's Google Drive access token from Supabase session
+ *   1. Takes the user's Google Drive access token (Google sign-in flow TBD)
  *   2. Ensures the "Clario Receipts" folder exists in their Drive
  *   3. Uploads the file directly to their Drive (never hits our server)
  *   4. Auto-grants "anyone with link" read permission
- *   5. Saves only the URL to our database (receipt_links table)
+ *   5. Attaches only the URL to the expense via the attach_receipt tool
  *
  * Users never touch Google Drive sharing settings manually.
  */
 
 import { useState } from "react";
-import { createClient } from "@/lib/supabase/client";
-import {
-  uploadReceiptToDrive,
-  ensureReceiptsFolder,
-  getDriveAccessToken,
-} from "@/lib/gdrive/drive";
+import { callTool } from "@/lib/api";
+import { uploadReceiptToDrive, ensureReceiptsFolder } from "@/lib/gdrive/drive";
 
 interface UploadState {
   uploading: boolean;
@@ -25,45 +21,38 @@ interface UploadState {
   progress: number;
 }
 
-export function useReceiptUpload(expenseId: string) {
+export function useReceiptUpload(expenseId: string, driveAccessToken: string | null) {
   const [state, setState] = useState<UploadState>({
     uploading: false,
     error: null,
     progress: 0,
   });
 
-  const supabase = createClient();
-
   async function upload(file: File) {
     setState({ uploading: true, error: null, progress: 10 });
 
     try {
-      // 1. Get session + Drive token
-      const { data: { session } } = await supabase.auth.getSession();
-      if (!session) throw new Error("Not signed in");
-
-      const accessToken = getDriveAccessToken(session);
+      // 1. Drive token
+      if (!driveAccessToken) {
+        throw new Error("No Google Drive access token. Connect your Google account first.");
+      }
       setState(s => ({ ...s, progress: 20 }));
 
       // 2. Ensure Clario folder exists in user's Drive
-      const folderId = await ensureReceiptsFolder(accessToken);
+      const folderId = await ensureReceiptsFolder(driveAccessToken);
       setState(s => ({ ...s, progress: 40 }));
 
       // 3. Upload to Drive + auto-share
-      const result = await uploadReceiptToDrive(file, accessToken, folderId);
+      const result = await uploadReceiptToDrive(file, driveAccessToken, folderId);
       setState(s => ({ ...s, progress: 80 }));
 
-      // 4. Save only the link to our DB — file bytes never touched our server
-      const { error: dbError } = await supabase.from("receipt_links").insert({
+      // 4. Attach only the link to the expense — file bytes never touched our server
+      await callTool("attach_receipt", {
         expense_id: expenseId,
-        uploaded_by: session.user.id,
         url: result.url,
-        embed_url: result.embedUrl,
         provider: "google_drive",
         filename: result.filename,
       });
-
-      if (dbError) throw dbError;
 
       setState({ uploading: false, error: null, progress: 100 });
       return result;

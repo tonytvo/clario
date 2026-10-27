@@ -30,7 +30,3 @@ jobs:
 
       - name: Test
         run: npm test
-        env:
-          # Tests use mocked Supabase — no real keys needed
-          SUPABASE_URL: https://test.supabase.co
-          SUPABASE_SERVICE_ROLE_KEY: test-key

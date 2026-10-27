@@ -5,13 +5,19 @@
  *   - src/mcp/adapter.ts   (when Claude calls a tool via MCP)
  *   - src/openapi/routes.ts (when ChatGPT calls a tool via HTTP POST)
  *
- * They receive validated input (already parsed by Zod) and a Supabase client
- * scoped to the authenticated user.
+ * They receive validated input (already parsed by Zod), the local-first
+ * LedgerStore port, and the acting user's id.
+ *
+ * Only add_expense is implemented on the ledger today. The other tools are
+ * STUBS: they validate what they can and return empty or placeholder results
+ * without persisting anything, until their slice of the local-first ledger
+ * is designed (see spdd/).
  */
 
-import { readFile } from "node:fs/promises";
+import { randomUUID } from "node:crypto";
+import { access } from "node:fs/promises";
 import { basename, extname } from "node:path";
-import type { SupabaseClient } from "@supabase/supabase-js";
+import { pathToFileURL } from "node:url";
 import type { z } from "zod";
 import type {
   GetExpensesInput,
@@ -46,83 +52,20 @@ type Out<T extends z.ZodType> = z.infer<T>;
 
 /**
  * Shape of a tool handler for the MCP/OpenAPI dispatch tables. Handlers have
- * heterogeneous input types and take either a SupabaseClient or the LedgerStore
- * port as their dependency, so the dispatch signature is intentionally loose;
+ * heterogeneous input types, so the dispatch signature is intentionally loose;
  * inputs are already Zod-validated before a handler is invoked.
  */
-// biome-ignore lint/suspicious/noExplicitAny: dynamic dispatch over handlers with differing input/dep types
+// biome-ignore lint/suspicious/noExplicitAny: dynamic dispatch over handlers with differing input types
 export type ToolHandler = (...args: any[]) => Promise<unknown>;
 
-// ── get_expenses ──────────────────────────────────────────────────────────
+// ── get_expenses (STUB) ───────────────────────────────────────────────────
 
 export async function getExpenses(
-  input: In<typeof GetExpensesInput>,
-  supabase: SupabaseClient,
-  userId: string
+  _input: In<typeof GetExpensesInput>,
+  _store: LedgerStore,
+  _userId: string
 ): Promise<Out<typeof GetExpensesOutput>> {
-  let query = supabase
-    .from("expenses")
-    .select(`
-      id, title, amount, currency, category, date, notes,
-      paid_by:profiles!expenses_paid_by_fkey(id, display_name),
-      groups(id, name),
-      expense_splits!inner(user_id, amount, settled),
-      receipt_links(id)
-    `)
-    .eq("expense_splits.user_id", userId)
-    .order(input.sort_by, { ascending: input.sort_order === "asc" })
-    .limit(input.limit);
-
-  if (input.group_id) query = query.eq("group_id", input.group_id);
-  if (input.category) query = query.eq("category", input.category);
-  if (input.settled !== undefined)
-    query = query.eq("expense_splits.settled", input.settled);
-  if (input.has_receipt !== undefined) {
-    query = input.has_receipt
-      ? query.not("receipt_links", "is", null)
-      : query.is("receipt_links", null);
-  }
-
-  const { data, error } = await query;
-  if (error) throw new Error(`DB error: ${error.message}`);
-
-  const expenses = (data ?? []).map((row: any) => {
-    const mySlip = row.expense_splits.find((s: any) => s.user_id === userId);
-    const iPaid = row.paid_by.id === userId;
-    const filteredByPaidByMe =
-      input.paid_by_me === undefined || input.paid_by_me === iPaid;
-
-    if (!filteredByPaidByMe) return null;
-
-    return {
-      id: row.id,
-      title: row.title,
-      amount: Number(row.amount),
-      currency: row.currency,
-      category: row.category,
-      paid_by_name: row.paid_by.display_name,
-      date: row.date,
-      group_name: row.groups?.name ?? "Unknown",
-      my_share: Number(mySlip?.amount ?? 0),
-      i_paid: iPaid,
-      settled: mySlip?.settled ?? false,
-      receipt_count: row.receipt_links?.length ?? 0,
-    };
-  }).filter(Boolean) as any[];
-
-  const youOwe = expenses
-    .filter((e) => !e.i_paid && !e.settled)
-    .reduce((s, e) => s + e.my_share, 0);
-  const youLent = expenses
-    .filter((e) => e.i_paid && !e.settled)
-    .reduce((s, e) => s + (e.amount - e.my_share), 0);
-
-  return {
-    expenses,
-    total_count: expenses.length,
-    you_owe: Math.round(youOwe * 100) / 100,
-    you_lent: Math.round(youLent * 100) / 100,
-  };
+  return { expenses: [], total_count: 0, you_owe: 0, you_lent: 0 };
 }
 
 // ── add_expense ───────────────────────────────────────────────────────────
@@ -135,266 +78,98 @@ export async function addExpense(
   return new RecordExpenseService(store).record(input, userId);
 }
 
-// ── get_balances ──────────────────────────────────────────────────────────
+// ── get_balances (STUB) ───────────────────────────────────────────────────
 
 export async function getBalances(
-  input: In<typeof GetBalancesInput>,
-  supabase: SupabaseClient,
-  userId: string
+  _input: In<typeof GetBalancesInput>,
+  _store: LedgerStore,
+  _userId: string
 ): Promise<Out<typeof GetBalancesOutput>> {
-  let query = supabase
-    .from("expense_splits")
-    .select(`
-      user_id, amount, settled,
-      expenses!inner(paid_by, currency, group_id)
-    `)
-    .eq("settled", false);
-
-  if (input.group_id) query = query.eq("expenses.group_id", input.group_id);
-
-  // Get splits where I paid (others owe me)
-  const { data: iLent } = await query
-    .eq("expenses.paid_by", userId)
-    .neq("user_id", userId);
-
-  // Get splits where I owe someone else
-  const { data: iOwe } = await query
-    .eq("user_id", userId)
-    .neq("expenses.paid_by", userId);
-
-  const netByUser = new Map<string, { net: number; currency: string }>();
-
-  for (const row of iLent ?? []) {
-    const cur = netByUser.get(row.user_id) ?? { net: 0, currency: (row as any).expenses.currency };
-    cur.net += Number(row.amount);
-    netByUser.set(row.user_id, cur);
-  }
-
-  for (const row of iOwe ?? []) {
-    const paid_by = (row as any).expenses.paid_by;
-    const cur = netByUser.get(paid_by) ?? { net: 0, currency: (row as any).expenses.currency };
-    cur.net -= Number(row.amount);
-    netByUser.set(paid_by, cur);
-  }
-
-  // Fetch display names
-  const userIds = [...netByUser.keys()];
-  const { data: profiles } = await supabase
-    .from("profiles")
-    .select("id, display_name")
-    .in("id", userIds);
-
-  const nameMap = new Map((profiles ?? []).map((p: any) => [p.id, p.display_name]));
-
-  const balances = [...netByUser.entries()].map(([uid, { net, currency }]) => ({
-    user_id: uid,
-    user_name: String(nameMap.get(uid) ?? uid),
-    net: Math.round(net * 100) / 100,
-    currency,
-  }));
-
-  const yourNet = balances.reduce((s, b) => s + b.net, 0);
-
-  return {
-    balances,
-    your_net: Math.round(yourNet * 100) / 100,
-    currency: balances[0]?.currency ?? "CAD",
-  };
+  return { balances: [], your_net: 0, currency: "CAD" };
 }
 
-// ── settle_up ─────────────────────────────────────────────────────────────
+// ── settle_up (STUB) ──────────────────────────────────────────────────────
 
 export async function settleUp(
   input: In<typeof SettleUpInput>,
-  supabase: SupabaseClient,
-  userId: string
+  _store: LedgerStore,
+  _userId: string
 ): Promise<Out<typeof SettleUpOutput>> {
-  // Fetch expense IDs paid by the other user in this group
-  const { data: relatedExpenses } = await supabase
-    .from("expenses")
-    .select("id")
-    .eq("paid_by", input.to_user_id)
-    .eq("group_id", input.group_id);
-
-  const expenseIds = (relatedExpenses ?? []).map((e: any) => e.id);
-
-  // Mark relevant splits as settled
-  const { error: splitErr } = expenseIds.length === 0
-    ? { error: null }
-    : await supabase
-        .from("expense_splits")
-        .update({ settled: true, settled_at: new Date().toISOString() })
-        .eq("user_id", userId)
-        .eq("settled", false)
-        .in("expense_id", expenseIds);
-
-  if (splitErr) throw new Error(`Failed to settle splits: ${splitErr.message}`);
-
-  // Record the settlement
-  const { data: settlement, error: settleErr } = await supabase
-    .from("settlements")
-    .insert({
-      group_id: input.group_id,
-      from_user: userId,
-      to_user: input.to_user_id,
-      amount: input.amount,
-      currency: input.currency,
-      note: input.note,
-    })
-    .select("id")
-    .single();
-
-  if (settleErr) throw new Error(`Failed to record settlement: ${settleErr.message}`);
-
   return {
-    settlement_id: settlement.id,
-    message: `Settled $${input.amount.toFixed(2)} ${input.currency}. All relevant splits marked as done.`,
+    settlement_id: randomUUID(),
+    message: `Settled $${input.amount.toFixed(2)} ${input.currency} (stub — not yet recorded on the local ledger).`,
   };
 }
 
-// ── get_groups ────────────────────────────────────────────────────────────
+// ── get_groups (STUB) ─────────────────────────────────────────────────────
 
 export async function getGroups(
   _input: In<typeof GetGroupsInput>,
-  supabase: SupabaseClient,
-  userId: string
+  _store: LedgerStore,
+  _userId: string
 ): Promise<Out<typeof GetGroupsOutput>> {
-  const { data, error } = await supabase
-    .from("groups")
-    .select(`
-      id, name, currency,
-      group_members(user_id)
-    `)
-    .eq("group_members.user_id", userId);
-
-  if (error) throw new Error(`DB error: ${error.message}`);
-
-  const groups = await Promise.all(
-    (data ?? []).map(async (g: any) => {
-      // Quick balance check per group
-      const { data: unsettled } = await supabase
-        .from("expense_splits")
-        .select("amount, expenses!inner(paid_by, group_id)")
-        .eq("expenses.group_id", g.id)
-        .eq("settled", false)
-        .eq("user_id", userId);
-
-      const yourBalance = (unsettled ?? []).reduce((s: number, row: any) => {
-        return row.expenses.paid_by === userId ? s : s - Number(row.amount);
-      }, 0);
-
-      return {
-        id: g.id,
-        name: g.name,
-        member_count: g.group_members?.length ?? 0,
-        your_balance: Math.round(yourBalance * 100) / 100,
-        currency: g.currency,
-      };
-    })
-  );
-
-  return { groups };
+  return { groups: [] };
 }
 
-// ── attach_receipt ────────────────────────────────────────────────────────
+// ── attach_receipt (STUB) ─────────────────────────────────────────────────
 
 export async function attachReceipt(
   input: In<typeof AttachReceiptInput>,
-  supabase: SupabaseClient,
-  userId: string
+  _store: LedgerStore,
+  _userId: string
 ): Promise<Out<typeof AttachReceiptOutput>> {
-  // Derive embed URL for Google Drive
-  let embedUrl = input.url;
-  if (input.provider === "google_drive") {
-    try {
-      const u = new URL(input.url);
-      const segments = u.pathname.split("/");
-      const fileIdx = segments.indexOf("d");
-      if (fileIdx !== -1) {
-        const fileId = segments[fileIdx + 1];
-        embedUrl = `https://drive.google.com/file/d/${fileId}/preview`;
-      }
-    } catch {
-      // leave embed_url as the original url
-    }
-  }
-
-  const { data, error } = await supabase
-    .from("receipt_links")
-    .insert({
-      expense_id: input.expense_id,
-      uploaded_by: userId,
-      url: input.url,
-      embed_url: embedUrl,
-      provider: input.provider,
-      filename: input.filename,
-    })
-    .select("id")
-    .single();
-
-  if (error) throw new Error(`Failed to attach receipt: ${error.message}`);
-
+  const embedUrl = input.provider === "google_drive" ? toDriveEmbedUrl(input.url) : input.url;
   return {
-    receipt_id: data.id,
+    receipt_id: randomUUID(),
     embed_url: embedUrl,
-    message: `Receipt attached successfully. Preview: ${embedUrl}`,
+    message: `Receipt link accepted (stub — not yet stored on the local ledger). Preview: ${embedUrl}`,
   };
 }
 
-// ── upload_receipt_from_path (MCP / Claude Desktop only) ─────────────────────
+/**
+ * https://drive.google.com/file/d/FILE_ID/view → https://drive.google.com/file/d/FILE_ID/preview
+ * Returns the original URL if it is not a Drive file link.
+ */
+function toDriveEmbedUrl(url: string): string {
+  try {
+    const segments = new URL(url).pathname.split("/");
+    const fileIdx = segments.indexOf("d");
+    if (fileIdx === -1) return url;
+    return `https://drive.google.com/file/d/${segments[fileIdx + 1]}/preview`;
+  } catch {
+    return url;
+  }
+}
+
+// ── upload_receipt_from_path (MCP / Claude Desktop only, STUB) ───────────────
+// Receipts stay on the user's device: the file is referenced in place by a
+// file:// URL rather than uploaded anywhere.
 
 export async function uploadReceiptFromPath(
   input: In<typeof UploadReceiptFromPathInput>,
-  supabase: SupabaseClient,
-  userId: string
+  _store: LedgerStore,
+  _userId: string
 ): Promise<Out<typeof UploadReceiptFromPathOutput>> {
   const filename = basename(input.file_path);
   const ext = extname(input.file_path).toLowerCase();
-  const mimeType = MIME_TYPES[ext];
-  if (!mimeType) {
+  if (!MIME_TYPES[ext]) {
     throw new Error(
       `Unsupported file type "${ext}". Allowed: ${Object.keys(MIME_TYPES).join(", ")}`
     );
   }
 
-  let buffer: Buffer;
   try {
-    buffer = await readFile(input.file_path);
+    await access(input.file_path);
   } catch (err) {
     throw new Error(
       `Cannot read file "${input.file_path}": ${err instanceof Error ? err.message : String(err)}`
     );
   }
 
-  const bucket = process.env.SUPABASE_STORAGE_BUCKET ?? "receipts";
-  const storagePath = `${userId}/${input.expense_id}/${Date.now()}_${filename}`;
-
-  const { error: uploadError } = await supabase.storage
-    .from(bucket)
-    .upload(storagePath, buffer, { contentType: mimeType, upsert: false });
-
-  if (uploadError) throw new Error(`Storage upload failed: ${uploadError.message}`);
-
-  const { data: { publicUrl } } = supabase.storage.from(bucket).getPublicUrl(storagePath);
-
-  const { data, error: dbError } = await supabase
-    .from("receipt_links")
-    .insert({
-      expense_id: input.expense_id,
-      uploaded_by: userId,
-      url: publicUrl,
-      embed_url: publicUrl,
-      provider: "url",
-      filename,
-    })
-    .select("id")
-    .single();
-
-  if (dbError) throw new Error(`Failed to save receipt link: ${dbError.message}`);
-
+  const url = pathToFileURL(input.file_path).href;
   return {
-    receipt_id: data.id,
-    url: publicUrl,
-    message: `Receipt "${filename}" uploaded and attached. View it at: ${publicUrl}`,
+    receipt_id: randomUUID(),
+    url,
+    message: `Receipt "${filename}" referenced at ${url} (stub — not yet stored on the local ledger).`,
   };
 }
